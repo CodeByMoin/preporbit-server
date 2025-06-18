@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+compiled/
+config/serviceAccountKey.json
+.env
