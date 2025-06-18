@@ -91,13 +91,24 @@ app.use(compression());
 app.use(morgan("combined"));
 
 // CORS with strict configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173'];
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ["http://localhost:5173"],
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed for this origin'));
+    }
+  },
   credentials: true,
-  optionsSuccessStatus: 200,
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
 }));
+
 
 // Body parsing with size limits
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
