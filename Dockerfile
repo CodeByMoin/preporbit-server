@@ -25,4 +25,4 @@ COPY . .
 # 6. Expose port & start
 ENV PORT=3001
 EXPOSE 3001
-CMD ["node", "index.js"]
+CMD ["node", "server.js"]
