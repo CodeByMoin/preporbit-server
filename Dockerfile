@@ -15,22 +15,10 @@ RUN apt-get update && \
       texlive-fonts-recommended \
       texlive-fonts-extra \
       texlive-xetex \
-      texlive-pictures \
-      texlive-science \
-      texlive-pstricks \
-      texlive-publishers \
-      texlive-humanities \
-      texlive-lang-all \
-      texlive-bibtex-extra \
-      texlive-binaries \
-      texlive-formats-extra \
-      texlive-font-utils \
-      texlive-math-extra \
-      texlive-plain-generic \
-      texlive-extra-utils \
-      make \
       ghostscript \
       poppler-utils \
+      make \
+      nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 
