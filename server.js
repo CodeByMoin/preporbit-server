@@ -347,119 +347,99 @@ app.post("/api/fetch-url", authenticateToken, strictLimiter, async (req, res) =>
   }
 });
 
-app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) => {
-  const uploadsDir = path.join(__dirname, "uploads");
-  const outputDir  = path.join(__dirname, "compiled");
-  const fileId     = req.body.id ? sanitizeInput(req.body.id) : crypto.randomBytes(16).toString("hex");
-  const secureId   = `${req.user.uid}_${fileId}_${Date.now()}`;
-  const texFile    = path.join(uploadsDir, `${secureId}.tex`);
-  const pdfPath    = path.join(outputDir, `${secureId}.pdf`);
-  const logPath    = path.join(outputDir, `${secureId}.log`);
-  const auxPath    = path.join(outputDir, `${secureId}.aux`);
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No .tex file uploaded" });
-    }
-
+app.post("/compile",
+  authenticateToken,
+  upload.single("tex"),
+  async (req, res) => {
+    // base paths
     const uploadsDir = path.join(__dirname, "uploads");
-    const outputDir = path.join(__dirname, "compiled");
-    
-    // Ensure directories exist
-    [uploadsDir, outputDir].forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-      }
-    });
+    const outputDir  = path.join(__dirname, "compiled");
 
-    // Generate secure IDs
-    const fileId = req.body.id ? sanitizeInput(req.body.id) : crypto.randomBytes(16).toString('hex');
+    // unique filename pieces
+    const fileId   = req.body.id
+      ? sanitizeInput(req.body.id)
+      : crypto.randomBytes(16).toString("hex");
     const secureId = `${req.user.uid}_${fileId}_${Date.now()}`;
-    
-    const tempPath = req.file.path;
-    const texFile = path.join(uploadsDir, `${secureId}.tex`);
-    const pdfPath = path.join(outputDir, `${secureId}.pdf`);
-    const logPath = path.join(outputDir, `${secureId}.log`);
-    const auxPath = path.join(outputDir, `${secureId}.aux`);
 
-    // Validate file content
-    const fileContent = fs.readFileSync(tempPath, 'utf8');
-    
-    // Basic LaTeX content validation
-    if (fileContent.length > 1024 * 1024) { // 1MB limit for LaTeX content
-      cleanupFiles([tempPath]);
-      return res.status(400).json({ error: "LaTeX file too large" });
+    // full paths
+    const tempPath = req.file?.path;
+    const texFile  = path.join(uploadsDir,  `${secureId}.tex`);
+    const pdfPath  = path.join(outputDir, `${secureId}.pdf`);
+    const logPath  = path.join(outputDir, `${secureId}.log`);
+    const auxPath  = path.join(outputDir, `${secureId}.aux`);
+
+    try {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ error: "No .tex file uploaded" });
+      }
+
+      // ensure dirs
+      [uploadsDir, outputDir].forEach(d => {
+        if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+      });
+
+      // move uploaded file into place
+      fs.renameSync(tempPath, texFile);
+
+      // pick engine
+      const usesModernCV = fs
+        .readFileSync(texFile, "utf8")
+        .includes("\\documentclass{moderncv}");
+      const engine  = usesModernCV ? "xelatex" : "pdflatex";
+      const command = `${engine} -interaction=nonstopmode -output-directory=${outputDir} ${texFile}`;
+
+      console.log("→ Compiling:", command);
+      await executeCommand(command);
+
+      // wait for pdf
+      await waitForFile(pdfPath, 10000);
+
+      // check size
+      const stats = fs.statSync(pdfPath);
+      if (stats.size === 0) {
+        throw new Error("Empty PDF");
+      }
+
+      // send it back
+      res.setHeader("Content-Type", "application/pdf");
+      res.sendFile(pdfPath, err => {
+        if (err) console.error("SendFile error:", err);
+        // cleanup .tex/.aux/.log after we stream it
+        setTimeout(() => {
+          [texFile, auxPath, logPath, pdfPath].forEach(p => {
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+          });
+        }, 2000);
+      });
+
+    } catch (err) {
+      console.error("⚠️ Compilation error:", err);
+
+      // if a PDF got produced anyway, send it
+      if (fs.existsSync(pdfPath)) {
+        console.log("⚠️ Returning partial PDF anyway");
+        res.setHeader("Content-Type", "application/pdf");
+        return res.sendFile(pdfPath);
+      }
+
+      // otherwise return JSON error
+      let details = err.message;
+      if (fs.existsSync(logPath)) {
+        details += "\n\n" +
+          fs.readFileSync(logPath, "utf8")
+            .split("\n")
+            .slice(-20) // last 20 lines
+            .join("\n");
+      }
+
+      return res
+        .status(500)
+        .json({ error: "LaTeX compilation failed", details });
     }
+  });
 
-    // Move file securely
-    fs.renameSync(tempPath, texFile);
-
-    // Determine LaTeX engine
-    const modernCVVariants = [
-      '\\documentclass[11pt, a4paper,sans]{moderncv}',
-      '\\documentclass[11pt,a4paper,sans]{moderncv}',
-      '\\documentclass[11pt, a4paper]{moderncv}',
-      '\\documentclass{moderncv}'
-    ];
-    
-    const usesModernCV = modernCVVariants.some(variant => 
-      fileContent.includes(variant)
-    );
-    
-    const engine = usesModernCV ? 'xelatex' : 'pdflatex';
-    const command = `${engine} -interaction=nonstopmode -output-directory=${outputDir} ${texFile}`;
-    
-    console.log(`🔄 Compiling LaTeX (User: ${req.user.uid}): ${command}`);
-
-    // Execute compilation with security measures
-    const result = await executeCommand(command);
-    
-    console.log("LaTeX STDOUT:\n", result.stdout);
-
-    // Wait for PDF creation
-    await waitForFile(pdfPath, 10000);
-    
-    const stats = fs.statSync(pdfPath);
-    if (stats.size === 0) {
-      throw new Error("Generated PDF is empty");
-    }
-
-    console.log(`✅ PDF compiled successfully: ${pdfPath} (${stats.size} bytes)`);
-    
-    // Schedule cleanup of auxiliary files
-    setTimeout(() => {
-      cleanupFiles([texFile, logPath, auxPath]);
-    }, 2000);
-    
-    return res.download(pdfPath, `${secureId}.pdf`);
-
-  } catch (err) {
-    console.error("❌ Compilation error:", err);
-    
-    // Cleanup on error
-    if (req.file) {
-      const tempPath = req.file.path;
-      cleanupFiles([tempPath]);
-    }
-
-    if (fs.existsSync(pdfPath)) {
-      console.log("⚠️ Returning PDF despite errors");
-      return res.download(pdfPath, `${secureId}.pdf`);
-    }
-
-    let errorLog = '';
-    if (err.stderr || err.stdout) {
-    errorLog = `${err.stderr || ''}\n${err.stdout || ''}`.slice(-5000);
-  } else if (fs.existsSync(logPath)) {
-    errorLog = fs.readFileSync(logPath, 'utf8').slice(-5000);
-  }
-    
-    res.status(500).json({ 
-      error: "LaTeX compilation failed",
-      details: err.error?.message || err.message,
-      log: errorLog
-    });
-  }
-});
 
 app.get("/download/:id", authenticateToken, (req, res) => {
   try {
