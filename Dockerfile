@@ -1,5 +1,10 @@
-# 1. Base Node image
-FROM node:18-slim
+# 1. Use full Debian image
+FROM debian:bullseye
+
+# 2. Set up Node manually
+RUN apt-get update && apt-get install -y curl gnupg && \
+  curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+  apt-get install -y nodejs
 
 # 2. Install texlive
 RUN apt-get update && \
