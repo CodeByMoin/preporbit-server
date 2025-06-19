@@ -348,6 +348,14 @@ app.post("/api/fetch-url", authenticateToken, strictLimiter, async (req, res) =>
 });
 
 app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) => {
+  const uploadsDir = path.join(__dirname, "uploads");
+  const outputDir  = path.join(__dirname, "compiled");
+  const fileId     = req.body.id ? sanitizeInput(req.body.id) : crypto.randomBytes(16).toString("hex");
+  const secureId   = `${req.user.uid}_${fileId}_${Date.now()}`;
+  const texFile    = path.join(uploadsDir, `${secureId}.tex`);
+  const pdfPath    = path.join(outputDir, `${secureId}.pdf`);
+  const logPath    = path.join(outputDir, `${secureId}.log`);
+  const auxPath    = path.join(outputDir, `${secureId}.aux`);
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No .tex file uploaded" });
