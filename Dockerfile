@@ -15,6 +15,7 @@ RUN apt-get update && \
       texlive-fonts-recommended \
       texlive-fonts-extra \
       texlive-xetex \
+      lmodern \
       ghostscript \
       poppler-utils \
       make \
