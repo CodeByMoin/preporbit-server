@@ -256,10 +256,8 @@ const cleanupFiles = (paths) => {
 // Secure command execution
 const executeCommand = (command, options = {}) => {
   return new Promise((resolve, reject) => {
-    // Sanitize command
-    const sanitizedCommand = command.replace(/[;&|`$(){}[\]]/g, '');
     
-    exec(sanitizedCommand, {
+    exec(command, {
       timeout: 30000, // 30 second timeout
       maxBuffer: 1024 * 1024, // 1MB buffer
       ...options
