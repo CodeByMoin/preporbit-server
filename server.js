@@ -406,7 +406,6 @@ app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) =
     const result = await executeCommand(command);
     
     console.log("LaTeX STDOUT:\n", result.stdout);
-    if (result.stderr) console.error("LaTeX STDERR:\n", result.stderr);
 
     // Wait for PDF creation
     await waitForFile(pdfPath, 10000);
@@ -423,12 +422,7 @@ app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) =
       cleanupFiles([texFile, logPath, auxPath]);
     }, 2000);
     
-    res.json({ 
-      success: true, 
-      id: secureId,
-      message: "PDF compiled successfully",
-      size: stats.size
-    });
+    return res.download(pdfPath, `${secureId}.pdf`);
 
   } catch (err) {
     console.error("❌ Compilation error:", err);
@@ -437,6 +431,11 @@ app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) =
     if (req.file) {
       const tempPath = req.file.path;
       cleanupFiles([tempPath]);
+    }
+
+    if (fs.existsSync(pdfPath)) {
+      console.log("⚠️ Returning PDF despite errors");
+      return res.download(pdfPath, `${secureId}.pdf`);
     }
 
     let errorLog = '';
