@@ -256,15 +256,17 @@ const cleanupFiles = (paths) => {
 // Secure command execution
 const executeCommand = (command, options = {}) => {
   return new Promise((resolve, reject) => {
+    // Sanitize command
+    const sanitizedCommand = command.replace(/[;&|`$(){}[\]]/g, '');
     
-    exec(command, {
+    exec(sanitizedCommand, {
       timeout: 30000, // 30 second timeout
       maxBuffer: 1024 * 1024, // 1MB buffer
       ...options
     }, (error, stdout, stderr) => {
       if (error) {
         console.error(`Command failed: ${error.message}`);
-        reject(error);
+        reject({ error, stdout, stderr });
       } else {
         resolve({ stdout, stderr });
       }
@@ -428,18 +430,26 @@ app.post("/compile", authenticateToken, upload.single("tex"), async (req, res) =
       size: stats.size
     });
 
-  } catch (error) {
-    console.error("❌ Compilation error:", error);
+  } catch (err) {
+    console.error("❌ Compilation error:", err);
     
     // Cleanup on error
     if (req.file) {
       const tempPath = req.file.path;
       cleanupFiles([tempPath]);
     }
+
+    let errorLog = '';
+    if (err.stderr || err.stdout) {
+    errorLog = `${err.stderr || ''}\n${err.stdout || ''}`.slice(-5000);
+  } else if (fs.existsSync(logPath)) {
+    errorLog = fs.readFileSync(logPath, 'utf8').slice(-5000);
+  }
     
     res.status(500).json({ 
       error: "LaTeX compilation failed",
-      details: error.message
+      details: err.error?.message || err.message,
+      log: errorLog
     });
   }
 });
