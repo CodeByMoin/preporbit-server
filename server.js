@@ -109,6 +109,14 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
+const preflightLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,
+  message: "Too many preflight requests, try again later"
+});
+
+app.options('*', preflightLimiter, cors());
+
 
 // Body parsing with size limits
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
