@@ -77,7 +77,15 @@ const strictLimiter = rateLimit({
   }
 });
 
-app.use(limiter);
+// app.use(limiter);
+// Apply general rate limiting AFTER CORS and preflight handling
+app.use((req, res, next) => {
+  // Skip rate limiting for preflight requests
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  limiter(req, res, next);
+});
 
 // Data sanitization
 app.use(mongoSanitize());
@@ -90,32 +98,94 @@ app.use(compression());
 // Logging
 app.use(morgan("combined"));
 
-// CORS with strict configuration
+// // CORS with strict configuration
+// const allowedOrigins = process.env.ALLOWED_ORIGINS
+//   ? process.env.ALLOWED_ORIGINS.split(',')
+//   : ['http://localhost:5173'];
+
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     if (!origin || allowedOrigins.includes(origin)) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error('CORS not allowed for this origin'));
+//     }
+//   },
+//   credentials: true,
+//   methods: ['GET', 'POST'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+//   optionsSuccessStatus: 200
+// }));
+
+// const preflightLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 200,
+//   message: "Too many preflight requests, try again later"
+// });
+
+// app.options('*', preflightLimiter, cors());
+// Improved CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : ['http://localhost:5173'];
 
-app.use(cors({
+// Add debugging to see what's happening
+const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS not allowed for this origin'));
+    console.log('CORS check - Origin:', origin);
+    console.log('CORS check - Allowed origins:', allowedOrigins);
+    
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      console.log('CORS: No origin header, allowing request');
+      return callback(null, true);
     }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      console.log('CORS: Origin allowed');
+      return callback(null, true);
+    }
+    
+    // For development, be more lenient with localhost
+    if (process.env.NODE_ENV !== 'production') {
+      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+      if (isLocalhost) {
+        console.log('CORS: Development mode - allowing localhost');
+        return callback(null, true);
+      }
+    }
+    
+    console.log('CORS: Origin not allowed:', origin);
+    callback(new Error('CORS not allowed for this origin'));
   },
   credentials: true,
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-}));
+  optionsSuccessStatus: 200,
+  preflightContinue: false // Important: handle preflight here
+};
 
+// Apply CORS before rate limiting to handle preflight requests properly
+app.use(cors(corsOptions));
+
+// Separate preflight handler with its own rate limiting
 const preflightLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
-  message: "Too many preflight requests, try again later"
+  message: "Too many preflight requests, try again later",
+  skip: (req) => req.method !== 'OPTIONS' // Only apply to OPTIONS requests
 });
 
-app.options('*', preflightLimiter, cors());
+// Handle preflight requests explicitly BEFORE general rate limiting
+app.options('*', preflightLimiter, (req, res) => {
+  console.log('Preflight request received for:', req.path);
+  res.header('Access-Control-Allow-Origin', req.headers.origin);
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
+});
 
 
 // Body parsing with size limits
