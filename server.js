@@ -355,7 +355,7 @@ const executeCommand = (command, options = {}) => {
 };
 
 // Email configuration (add to your existing code after Firebase setup)
-const emailTransporter = nodemailer.createTransporter({
+const emailTransporter = nodemailer.createTransport({
   service: 'gmail', // or your preferred email service
   auth: {
     user: process.env.EMAIL_USER, // your email
