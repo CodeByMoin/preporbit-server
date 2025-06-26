@@ -14,6 +14,8 @@ const compression = require("compression");
 const morgan = require("morgan");
 const validator = require("validator");
 const crypto = require("crypto");
+const nodemailer = require('nodemailer');
+const cron = require('node-cron');
 const admin = require("firebase-admin");
 
 // Initialize Firebase Admin using individual env vars
@@ -351,6 +353,477 @@ const executeCommand = (command, options = {}) => {
     });
   });
 };
+
+// Email configuration (add to your existing code after Firebase setup)
+const emailTransporter = nodemailer.createTransporter({
+  service: 'gmail', // or your preferred email service
+  auth: {
+    user: process.env.EMAIL_USER, // your email
+    pass: process.env.EMAIL_APP_PASSWORD // app-specific password
+  },
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100
+});
+
+// Verify email configuration
+emailTransporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ Email configuration error:', error);
+  } else {
+    console.log('✅ Email server is ready');
+  }
+});
+
+// Function to check if date is today
+const isToday = (dateString) => {
+  if (!dateString) return false;
+  
+  const today = new Date();
+  const checkDate = new Date(dateString);
+  
+  return today.getFullYear() === checkDate.getFullYear() &&
+         today.getMonth() === checkDate.getMonth() &&
+         today.getDate() === checkDate.getDate();
+};
+
+// Email template for coding reminder
+const generateReminderEmailHTML = (userName) => {
+  const motivationalMessages = [
+    "Every expert was once a beginner. Every pro was once an amateur.",
+    "The only way to learn programming is by writing programs.",
+    "Code is like humor. When you have to explain it, it's bad.",
+    "Programming isn't about what you know; it's about what you can figure out.",
+    "The best time to plant a tree was 20 years ago. The second best time is now."
+  ];
+  
+  const tips = [
+    "Start with just 15 minutes of coding today",
+    "Try solving one easy problem to build momentum",
+    "Review a concept you learned yesterday",
+    "Practice debugging a small piece of code",
+    "Write a simple function or algorithm"
+  ];
+  
+  const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+  const randomTip = tips[Math.floor(Math.random() * tips.length)];
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Daily Coding Reminder</title>
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          line-height: 1.6; 
+          margin: 0; 
+          padding: 0; 
+          background-color: #f5f5f5; 
+        }
+        .container { 
+          max-width: 600px; 
+          margin: 20px auto; 
+          background: white; 
+          border-radius: 12px; 
+          overflow: hidden; 
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+        }
+        .header { 
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+          color: white; 
+          padding: 30px 20px; 
+          text-align: center; 
+        }
+        .header h1 { 
+          margin: 0; 
+          font-size: 24px; 
+          font-weight: 600; 
+        }
+        .header p { 
+          margin: 10px 0 0 0; 
+          opacity: 0.9; 
+          font-size: 16px; 
+        }
+        .content { 
+          padding: 30px 25px; 
+        }
+        .greeting { 
+          font-size: 18px; 
+          color: #333; 
+          margin-bottom: 20px; 
+        }
+        .reminder-box { 
+          background: #f8f9fa; 
+          border-left: 4px solid #667eea; 
+          padding: 20px; 
+          margin: 20px 0; 
+          border-radius: 0 8px 8px 0; 
+        }
+        .reminder-text { 
+          font-size: 16px; 
+          color: #495057; 
+          margin-bottom: 15px; 
+        }
+        .motivation-quote { 
+          background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); 
+          border-radius: 8px; 
+          padding: 20px; 
+          margin: 20px 0; 
+          text-align: center; 
+          font-style: italic; 
+          color: #555; 
+          font-size: 16px; 
+        }
+        .tip-box { 
+          background: #e8f5e8; 
+          border: 1px solid #c3e6c3; 
+          border-radius: 8px; 
+          padding: 15px; 
+          margin: 20px 0; 
+        }
+        .tip-title { 
+          font-weight: 600; 
+          color: #2d5a2d; 
+          margin-bottom: 8px; 
+          font-size: 14px; 
+        }
+        .tip-text { 
+          color: #4a6741; 
+          font-size: 14px; 
+        }
+        .cta-button { 
+          display: inline-block; 
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+          color: white; 
+          padding: 15px 30px; 
+          text-decoration: none; 
+          border-radius: 25px; 
+          font-weight: 600; 
+          margin: 20px 0; 
+          text-align: center; 
+          font-size: 16px;
+        }
+        .stats-reminder { 
+          background: #fff3cd; 
+          border: 1px solid #ffeaa7; 
+          border-radius: 8px; 
+          padding: 15px; 
+          margin: 20px 0; 
+          text-align: center; 
+        }
+        .footer { 
+          background: #f8f9fa; 
+          color: #6c757d; 
+          padding: 20px; 
+          text-align: center; 
+          font-size: 12px; 
+          border-top: 1px solid #dee2e6; 
+        }
+        .emoji { 
+          font-size: 24px; 
+          margin-bottom: 10px; 
+        }
+        @media (max-width: 600px) { 
+          .container { margin: 10px; }
+          .content { padding: 20px 15px; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="emoji">👨‍💻</div>
+          <h1>Daily Coding Reminder</h1>
+          <p>Keep your coding momentum going!</p>
+        </div>
+        
+        <div class="content">
+          <div class="greeting">
+            Hello ${userName || 'Coder'}! 👋
+          </div>
+          
+          <div class="reminder-box">
+            <div class="reminder-text">
+              We noticed you haven't practiced coding today. Every day of practice counts towards becoming a better developer! 
+            </div>
+            <div class="reminder-text">
+              Even 15-20 minutes of coding can make a significant difference in maintaining your skills and building momentum.
+            </div>
+          </div>
+          
+          <div class="motivation-quote">
+            "${randomMessage}"
+          </div>
+          
+          <div class="tip-box">
+            <div class="tip-title">💡 Quick Tip for Today:</div>
+            <div class="tip-text">${randomTip}</div>
+          </div>
+          
+          <div class="stats-reminder">
+            <strong>🎯 Remember:</strong> Consistency is key! Small daily efforts lead to big results.
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px;">
+            <p><strong>🚀 Ready to code?</strong></p>
+            <p>Start with something simple and build from there. You've got this!</p>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>Happy Coding! 🎯</p>
+          <p>This is an automated reminder. You can disable these notifications in your profile settings.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// Function to send reminder email to individual user
+const sendReminderEmail = async (userEmail, userName) => {
+  try {
+    const mailOptions = {
+      from: {
+        name: 'Coding Practice Reminder',
+        address: process.env.EMAIL_USER
+      },
+      to: userEmail,
+      subject: `⏰ Don't forget to practice coding today, ${userName}!`,
+      html: generateReminderEmailHTML(userName),
+      text: `Hi ${userName}!\n\nThis is a friendly reminder to practice coding today. Even 15-20 minutes can make a difference!\n\nConsistency is key to improving your programming skills. Keep up the great work!\n\nHappy Coding!`
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ Reminder email sent to ${userEmail} (${userName}):`, info.messageId);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send reminder email to ${userEmail}:`, error);
+    return false;
+  }
+};
+
+// Main function to check database and send reminders
+const checkAndSendReminders = async () => {
+  try {
+    console.log('🔍 Checking database for users who need coding reminders...');
+    
+    // Get all users from Firestore
+    const usersSnapshot = await admin.firestore().collection('users').get();
+    
+    if (usersSnapshot.empty) {
+      console.log('📭 No users found in database');
+      return;
+    }
+
+    let remindersSent = 0;
+    let usersChecked = 0;
+    let usersSkipped = 0;
+
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    for (const userDoc of usersSnapshot.docs) {
+      const userData = userDoc.data();
+      const userId = userDoc.id;
+      
+      usersChecked++;
+      
+      // Check if user has email notifications enabled
+      const emailNotificationsEnabled = userData.settings?.notifications?.email;
+      if (!emailNotificationsEnabled) {
+        console.log(`⏭️ Skipping user ${userData.name || userId} - email notifications disabled`);
+        usersSkipped++;
+        continue;
+      }
+
+      // Check if user has valid email
+      if (!userData.email || !validator.isEmail(userData.email)) {
+        console.log(`⏭️ Skipping user ${userData.name || userId} - invalid email`);
+        usersSkipped++;
+        continue;
+      }
+
+      // Check if user has practiced today
+      const lastSolvedDate = userData.lastSolvedDate;
+      const hasNotPracticedToday = !isToday(lastSolvedDate);
+      
+      if (hasNotPracticedToday) {
+        console.log(`📧 Sending reminder to: ${userData.name || userData.email} (Last solved: ${lastSolvedDate || 'Never'})`);
+        
+        const emailSent = await sendReminderEmail(
+          userData.email, 
+          userData.name || userData.fullname || 'Coder'
+        );
+        
+        if (emailSent) {
+          remindersSent++;
+          
+          // Update user's last reminder sent date (optional)
+          try {
+            await admin.firestore().collection('users').doc(userId).update({
+              lastReminderSent: admin.firestore.FieldValue.serverTimestamp()
+            });
+          } catch (updateError) {
+            console.warn(`⚠️ Could not update reminder timestamp for ${userId}:`, updateError.message);
+          }
+        }
+        
+        // Add delay between emails to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        console.log(`✅ User ${userData.name || userData.email} has already practiced today`);
+      }
+    }
+
+    console.log(`📊 Reminder check completed:`);
+    console.log(`   - Users checked: ${usersChecked}`);
+    console.log(`   - Reminders sent: ${remindersSent}`);
+    console.log(`   - Users skipped: ${usersSkipped}`);
+    
+  } catch (error) {
+    console.error('❌ Error checking database for reminders:', error);
+  }
+};
+
+// Schedule reminder checks at multiple times during the day
+// Morning reminder: 10:00 AM
+cron.schedule('0 10 * * *', () => {
+  console.log('🌅 Running morning coding reminder check...');
+  checkAndSendReminders();
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+// Afternoon reminder: 2:00 PM
+cron.schedule('0 14 * * *', () => {
+  console.log('🌞 Running afternoon coding reminder check...');
+  checkAndSendReminders();
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+// Evening reminder: 6:00 PM
+cron.schedule('0 18 * * *', () => {
+  console.log('🌆 Running evening coding reminder check...');
+  checkAndSendReminders();
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+// API endpoint to manually trigger reminder check (for testing)
+app.post('/api/reminders/check', authenticateToken, async (req, res) => {
+  try {
+    console.log(`🔧 Manual reminder check triggered by user: ${req.user.uid}`);
+    await checkAndSendReminders();
+    
+    res.json({
+      success: true,
+      message: 'Reminder check completed successfully'
+    });
+    
+  } catch (error) {
+    console.error('Manual reminder check error:', error);
+    res.status(500).json({ 
+      error: 'Failed to check reminders',
+      details: error.message 
+    });
+  }
+});
+
+// API endpoint to test email for current user
+app.post('/api/reminders/test', authenticateToken, async (req, res) => {
+  try {
+    // Get current user data from database
+    const userDoc = await admin.firestore().collection('users').doc(req.user.uid).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found in database' });
+    }
+    
+    const userData = userDoc.data();
+    
+    if (!userData.email) {
+      return res.status(400).json({ error: 'No email found for user' });
+    }
+    
+    const emailSent = await sendReminderEmail(
+      userData.email, 
+      userData.name || userData.fullname || 'Coder'
+    );
+    
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: 'Test reminder email sent successfully!',
+        email: userData.email
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to send test email' });
+    }
+    
+  } catch (error) {
+    console.error('Test reminder email error:', error);
+    res.status(500).json({ 
+      error: 'Failed to send test email',
+      details: error.message 
+    });
+  }
+});
+
+// API endpoint to get reminder statistics
+app.get('/api/reminders/stats', authenticateToken, async (req, res) => {
+  try {
+    const usersSnapshot = await admin.firestore().collection('users').get();
+    
+    let totalUsers = 0;
+    let usersWithEmailEnabled = 0;
+    let usersPracticedToday = 0;
+    let usersNeedingReminder = 0;
+    
+    for (const userDoc of usersSnapshot.docs) {
+      const userData = userDoc.data();
+      totalUsers++;
+      
+      if (userData.settings?.notifications?.email) {
+        usersWithEmailEnabled++;
+        
+        if (isToday(userData.lastSolvedDate)) {
+          usersPracticedToday++;
+        } else {
+          usersNeedingReminder++;
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      stats: {
+        totalUsers,
+        usersWithEmailEnabled,
+        usersPracticedToday,
+        usersNeedingReminder,
+        lastChecked: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('Reminder stats error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get reminder statistics',
+      details: error.message 
+    });
+  }
+});
+
+console.log('📧 Coding reminder system initialized');
+console.log('⏰ Reminders scheduled for: 10:00 AM, 2:00 PM, and 6:00 PM IST');
+console.log('🔍 System will check database for users who haven\'t practiced coding today');
 
 // Routes with authentication and validation
 
